@@ -92,7 +92,7 @@ function start() {
     try { localStorage.removeItem('iirose_roomdestroy_sound'); } catch (e) { }
     sounds.length = 0;
     var r4 = A.destroyRoomTip();
-    ok('弹的时候调了站内系统提示音 notiSound("system")', sounds.length === 1 && sounds[0] === 'system', JSON.stringify(sounds));
+    ok('弹的时候调了站内信箱提示音 notiSound("mail")', sounds.length === 1 && sounds[0] === 'mail', JSON.stringify(sounds));
     ok('返回值标了音源 = site', r4.sound === 'site', r4.sound);
     A.setSound(false);
     sounds.length = 0;
@@ -133,14 +133,46 @@ function start() {
     inp2.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     ok('Esc → 收起', box.style.display === 'none', box.style.display);
 
-    lines.push('\n[8] 手动指定 + 卸载');
+    lines.push('\n[8] 右键：只开输入框，不销毁');
     syncCalls.length = 0;
-    var r3 = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
-    ok('指定房名生效', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1', r3.text);
-    A.unmount();
-    ok('卸载后悬浮球消失', !document.getElementById('iirose-roomdestroy-fab'));
-    ok('卸载后输入框也消失', !document.getElementById('iirose-roomdestroy-box'));
-    setTimeout(function () { ok('卸载后不会再被补回来', !document.getElementById('iirose-roomdestroy-fab')); dump(); }, 2400);
+    A.openInput(); box.querySelectorAll('button')[1].click();          // 先收起
+    fab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 2, pointerType: 'mouse' }));
+    fab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 2, pointerType: 'mouse' }));
+    ok('右键不弹销毁', syncCalls.length === 0, 'sync ' + syncCalls.length + ' 次');
+    fab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    ok('右键打开输入框', box.style.display === 'block', box.style.display);
+    box.querySelectorAll('button')[1].click();
+    ok('收起后接着测', box.style.display === 'none');
+
+    lines.push('\n[9] 触屏：点 = 输入房号；长按 2 秒 = 销毁当前房');
+    syncCalls.length = 0;
+    fab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, pointerType: 'touch' }));
+    fab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, pointerType: 'touch' }));
+    ok('触屏轻点不销毁', syncCalls.length === 0, 'sync ' + syncCalls.length + ' 次');
+    ok('触屏轻点打开输入框', box.style.display === 'block', box.style.display);
+    box.querySelectorAll('button')[1].click();
+    syncCalls.length = 0;
+    fab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, pointerType: 'touch' }));
+    setTimeout(function () {                                    // 等长按判定（2 秒）
+      ok('长按 2 秒 = 销毁当前房', syncCalls.length === 1 && syncCalls[0][1].indexOf('\u5df2\u88ab\u9500\u6bc1') >= 0, String(syncCalls[0] && syncCalls[0][1]));
+      ok('长按期间不会冒输入框', box.style.display === 'none', box.style.display);
+      fab.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, pointerType: 'touch' }));
+      ok('长按抬手不会重复弹', syncCalls.length === 1, 'sync ' + syncCalls.length + ' 次');
+      fab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      ok('触屏上的 contextmenu 不抢长按（不冒输入框）', box.style.display === 'none', box.style.display);
+      finalUnmount();
+    }, 2300);
+
+    function finalUnmount() {
+      lines.push('\n[10] 手动指定 + 卸载');
+      syncCalls.length = 0;
+      var r3 = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
+      ok('指定房名生效', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1', r3.text);
+      A.unmount();
+      ok('卸载后悬浮球消失', !document.getElementById('iirose-roomdestroy-fab'));
+      ok('卸载后输入框也消失', !document.getElementById('iirose-roomdestroy-box'));
+      setTimeout(function () { ok('卸载后不会再被补回来', !document.getElementById('iirose-roomdestroy-fab')); dump(); }, 2400);
+    }
   } catch (e) {
     ok('测试自身没抛错', false, e && e.message);
     dump();

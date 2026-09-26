@@ -10,8 +10,8 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.2.0';
-  const VERSION_CODE = 2;          // 官方规范：数字版本号，每次发布递增 1
+  const VERSION = '0.3.0';
+  const VERSION_CODE = 3;          // 官方规范：数字版本号，每次发布递增 1
   const TAG = '[房间销毁器]';
   try { window.__IIROSE_ROOMDESTROY_VERSION__ = VERSION; } catch (e) { }
 
@@ -103,7 +103,7 @@
 
   /* ---------- 提示音 ---------- */
   const SOUND_KEY = 'iirose_roomdestroy_sound';
-  const SITE_SOUND = 'system';        // 站点自己的系统提示音
+  const SITE_SOUND = 'mail';          // 站点自己的信箱消息提示音
 
   function soundOn() { try { return soundOnPref(localStorage.getItem(SOUND_KEY)); } catch (e) { return true; } }
   function setSound(on) { try { localStorage.setItem(SOUND_KEY, on ? '1' : '0'); } catch (e) { } return !!on; }
@@ -164,6 +164,7 @@
 
   /* ========================== 界面 ========================== */
   let fab = null, toast = null, toastTimer = null, drag = null, box = null, input = null, hint = null;
+  let lastPointerType = '';
 
   function readPos() {
     try {
@@ -274,16 +275,28 @@
 
     const p = readPos();
     applyPos(p.defaulted ? defaultPos() : p);
-    showToast('已就位：点我 = 销毁当前房间 · 右键/长按 = 指定房号', '#9ad0a0');
+    const coarse = !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+    showToast(coarse ? '已就位：点我 = 输入房号 · 长按 2 秒 = 销毁当前房'
+                     : '已就位：左键 = 销毁当前房 · 右键 = 输入房号', '#9ad0a0');
 
-    /* 拖动 + 点击（站点会吞掉默认点击，所以在 pointerup 里判定） */
+    /* 拖动 + 动作（站点会吞默认点击，所以在 pointerup 里判定）
+     * 鼠标：左键 = 弹当前房；右键 = 输入房号（右键不弹、不销毁）
+     * 触屏：点 = 输入房号；长按 2 秒 = 弹当前房
+     */
     fab.addEventListener('pointerdown', function (e) {
       e.stopPropagation();
-      drag = { x: e.clientX, y: e.clientY, l: parseFloat(fab.style.left) || 0, t: parseFloat(fab.style.top) || 0, moved: 0, held: 0 };
+      lastPointerType = e.pointerType || '';
+      if (e.button > 0) return;                  // 右键/中键：既不拖也不动作
+      drag = {
+        x: e.clientX, y: e.clientY, l: parseFloat(fab.style.left) || 0, t: parseFloat(fab.style.top) || 0,
+        moved: 0, held: 0, touch: e.pointerType === 'touch',
+      };
       try { fab.setPointerCapture(e.pointerId); } catch (_) { }
-      drag.holdTimer = setTimeout(function () {          // 长按 550ms = 打开输入框（手机上也能用）
-        if (drag && drag.moved < 4) { drag.held = 1; openInput(); }
-      }, 550);
+      drag.holdTimer = setTimeout(function () {   // 触屏长按 2 秒 = 销毁；鼠标长按 = 输入房号
+        if (!drag || drag.moved >= 4) return;
+        drag.held = 1;
+        if (drag.touch) fire(); else openInput();
+      }, drag.touch ? 2000 : 550);
     });
     fab.addEventListener('pointermove', function (e) {
       if (!drag) return;
@@ -295,11 +308,11 @@
     fab.addEventListener('pointerup', function (e) {
       if (!drag) return;
       e.stopPropagation();
-      const moved = drag.moved, held = drag.held;
+      const moved = drag.moved, held = drag.held, touch = drag.touch;
       if (drag.holdTimer) clearTimeout(drag.holdTimer);
       drag = null;
-      if (held) return;                                  // 长按已经开了输入框，别再弹一次
-      if (moved < 4) fire();
+      if (held) return;                          // 长按已经动作过了，别再补一次
+      if (moved < 4) { if (touch) openInput(); else fire(); }   // 触屏点 = 输入房号；鼠标左键 = 销毁当前房
       else { const p = { left: parseFloat(fab.style.left) || 0, top: parseFloat(fab.style.top) || 0 }; writePos(p); showToast('摆位已记住', '#9ad0a0'); }
       if (toast) {
         const p = { left: parseFloat(fab.style.left) || 0, top: parseFloat(fab.style.top) || 0 };
@@ -308,7 +321,12 @@
       }
     });
     fab.addEventListener('pointercancel', function () { if (drag && drag.holdTimer) clearTimeout(drag.holdTimer); drag = null; });
-    fab.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); openInput(); });
+    fab.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (lastPointerType === 'touch') return;   // 触屏长按也会冒 contextmenu，别抢长按的活
+      openInput();
+    });
     fab.addEventListener('click', function (e) { e.stopPropagation(); });   // 真正的动作在 pointerup
     window.addEventListener('resize', keepInView);
     return true;
