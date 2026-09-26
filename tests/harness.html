@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>房间销毁器 · 交互自测</title>
+<style>body{margin:0;background:#15161a;color:#ddd;font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif}
+#out{white-space:pre-wrap;padding:12px;font-family:Consolas,Menlo,monospace;font-size:12px}</style>
+</head>
+<body>
+<pre id="out"></pre>
+<script>
+/* ---------------- 结果收集 ---------------- */
+var lines = [], pass = 0, fail = 0;
+function ok(name, cond, extra) {
+  if (cond) { pass++; lines.push('  \u2713 ' + name); }
+  else { fail++; lines.push('  \u2717 ' + name + (extra === undefined ? '' : '   [' + extra + ']')); }
+}
+function dump() { document.getElementById('out').textContent = lines.join('\n') + '\nSUMMARY ' + pass + '/' + (pass + fail); }
+
+/* ---------------- 站点环境桩 ---------------- */
+var syncCalls = [];
+window.Utils = { sync: function (a, b) { syncCalls.push([a, b]); } };
+window.Mod = { template: function (i, x) { return i === 29 ? '[' + x + ']' : '?'; } };
+var ROOMNAME = '\u793e\u533a_\u7a7a\u95f4\u7ad9';       // 社区_空间站
+window.Cookie = function (k, v) { if (arguments.length > 1) { ROOMNAME = String(v); return v; } return k === 'roomname' ? ROOMNAME : ''; };
+window.roomn = 'R1';
+window.Objs = { mapHolder: { Assets: { roomNameJson: { R1: '\u4f4f\u5b85_\u6d45\u9189' } } } };   // 住宅_浅醉
+
+/* ---------------- 加载插件 ---------------- */
+var s = document.createElement('script');
+s.src = '../src/iirose-roomdestroy.js';
+s.onload = start;
+s.onerror = function () { ok('插件脚本加载', false); dump(); };
+document.head.appendChild(s);
+
+function pd(el, x, y) {
+  el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, pointerId: 1 }));
+}
+function pu(el, x, y) {
+  el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y, pointerId: 1 }));
+}
+
+function start() {
+  var A = window.__IIROSE_ROOMDESTROY__;
+  var fab = document.getElementById('iirose-roomdestroy-fab');
+  var t = 0;
+  try {
+
+    lines.push('[1] 装载与就位');
+    ok('对外入口挂上', !!A, typeof A);
+    ok('版本号可取', !!(A && A.version), A && A.version);
+    ok('悬浮球出现在页面上', !!fab);
+    ok('悬浮球是固定定位', !!fab && fab.style.position === 'fixed', fab && fab.style.position);
+    ok('_diag.currentRoomName() 取到 类型_房名',
+      A._diag.currentRoomName() === '\u793e\u533a_\u7a7a\u95f4\u7ad9', A._diag.currentRoomName());
+
+    lines.push('\n[2] 点击 = 弹站内原生提示（当前房）');
+    var r = A.destroyRoomTip();
+    ok('返回值 ok=true', r.ok === true, JSON.stringify(r));
+    ok('文本 = 站内那一行的形状', r.text === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1', r.text);
+    ok('调用的是 Utils.sync(0, \u2026)', syncCalls.length === 1 && syncCalls[0][0] === 0, JSON.stringify(syncCalls));
+
+    lines.push('\n[3] 点悬浮球本身（走 pointerup 判定）');
+    syncCalls.length = 0;
+    pd(fab, 100, 100); pu(fab, 100, 100);
+    ok('轻点 → 弹了一次', syncCalls.length === 1, String(syncCalls.length));
+    ok('轻点用的还是当前房名', syncCalls[0] && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1', String(syncCalls[0] && syncCalls[0][1]));
+
+    lines.push('\n[4] 拖动不误触');
+    syncCalls.length = 0;
+    fab.style.left = '200px'; fab.style.top = '200px';       // 固定起点，断言才有意义
+    pd(fab, 200, 200);
+    fab.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 260, clientY: 240, pointerId: 1 }));
+    pu(fab, 260, 240);
+    ok('拖动后没有弹提示', syncCalls.length === 0, String(syncCalls.length));
+    ok('拖动后的位置记进 localStorage', !!localStorage.getItem('iirose_roomdestroy_pos'), String(localStorage.getItem('iirose_roomdestroy_pos')));
+    var saved = JSON.parse(localStorage.getItem('iirose_roomdestroy_pos') || '{}');
+    ok('记住的位置 = 起点 + 位移', saved.left === 260 && saved.top === 240, JSON.stringify(saved));
+
+    lines.push('\n[5] 房名取不到时不抛错');
+    ROOMNAME = ''; window.Objs.mapHolder.Assets.roomNameJson = {};
+    syncCalls.length = 0;
+    var r2 = A.destroyRoomTip();
+    ok('退化成房号', r2.raw === 'R1', r2.raw);
+    ok('照样弹（不是静默失败）', r2.ok === true && syncCalls.length === 1, JSON.stringify(r2));
+
+    lines.push('\n[6] 手动指定房名 + 卸载');
+    syncCalls.length = 0;
+    var r3 = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
+    ok('指定房名生效', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1', r3.text);
+    A.unmount();
+    ok('卸载后悬浮球消失', !document.getElementById('iirose-roomdestroy-fab'));
+    setTimeout(function () { ok('卸载后不会再被补回来', !document.getElementById('iirose-roomdestroy-fab')); dump(); }, 2400);
+  } catch (e) {
+    ok('测试自身没抛错', false, e && e.message);
+    dump();
+  }
+}
+</script>
+</body>
+</html>
