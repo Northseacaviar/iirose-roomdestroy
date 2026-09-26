@@ -10,14 +10,15 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.1.0';
-  const VERSION_CODE = 1;          // 官方规范：数字版本号，每次发布递增 1
+  const VERSION = '0.2.0';
+  const VERSION_CODE = 2;          // 官方规范：数字版本号，每次发布递增 1
   const TAG = '[房间销毁器]';
   try { window.__IIROSE_ROOMDESTROY_VERSION__ = VERSION; } catch (e) { }
 
   // #region CORE
   const DESTROY_TIP_TEXT = '*   已被销毁';      // 站点原句，'*' 处换成房名（含 HTML，站点自己会渲染）
   const FAB_ID = 'iirose-roomdestroy-fab';
+  const BOX_ID = 'iirose-roomdestroy-box';
   const POS_KEY = 'iirose_roomdestroy_pos';
   const FAB_SIZE = 46;
 
@@ -51,6 +52,39 @@
     const maxY = Math.max(0, (vh || 0) - size);
     return { left: Math.min(Math.max(0, x || 0), maxX), top: Math.min(Math.max(0, y || 0), maxY) };
   }
+
+  /* 房号形态：站点 id 是 13 位十六进制 */
+  function looksLikeRid(v) { return /^[0-9a-f]{13}$/i.test(String(v == null ? '' : v).trim()); }
+
+  /* 提示音开关：本机偏好，默认开（存 "0" 表示关） */
+  function soundOnPref(raw) { return String(raw == null || raw === '' ? '1' : raw) !== '0'; }
+
+  /* 把"用户输入"变成站内那个完整房名：
+   *   房号   → 查站内房间表，命中就用「类型_房名」；表里没有就原样用
+   *   带前缀 → 不动（住宅_浅醉）
+   *   裸名字 → 在房间表里按 "_" 后半段匹配，命中就补上前缀（浅醉 → 住宅_浅醉）
+   */
+  function resolveRoomName(input, deps) {
+    deps = deps || {};
+    const names = deps.roomNames || null;
+    const raw = String(input == null ? '' : input).trim();
+    if (!raw) return '';
+    if (looksLikeRid(raw)) {
+      if (names && names[raw]) return String(names[raw]);
+      return raw;
+    }
+    if (raw.indexOf('_') >= 0) return raw;
+    if (names) {
+      const key = raw.toLowerCase();
+      for (const id in names) {
+        if (!Object.prototype.hasOwnProperty.call(names, id)) continue;
+        const full = String(names[id] || '');
+        const cut = full.lastIndexOf('_');
+        if (cut > 0 && full.substr(cut + 1).toLowerCase() === key) return full;
+      }
+    }
+    return raw;
+  }
   // #endregion
 
   /* ========================== 运行时 ========================== */
@@ -58,36 +92,78 @@
 
   function warn(where, e) { try { console.warn(TAG, where, e && e.message ? e.message : e); } catch (_) { } }
 
-  /* 真·实现：读站内状态 → 拼文本 → 调站点自己的提示通道 */
-  function destroyRoomTip() {
-    const deps = {
+  /* 读站内状态：cookie + 房间表 + 当前房 */
+  function currentDeps() {
+    return {
       cookieFn: (typeof Cookie === 'function') ? Cookie : null,
       roomNames: (G.Objs && G.Objs.mapHolder && G.Objs.mapHolder.Assets) ? G.Objs.mapHolder.Assets.roomNameJson : null,
       roomn: (typeof roomn !== 'undefined') ? roomn : '',
     };
-    const raw = destroyTipRawName(deps);
+  }
+
+  /* ---------- 提示音 ---------- */
+  const SOUND_KEY = 'iirose_roomdestroy_sound';
+  const SITE_SOUND = 'system';        // 站点自己的系统提示音
+
+  function soundOn() { try { return soundOnPref(localStorage.getItem(SOUND_KEY)); } catch (e) { return true; } }
+  function setSound(on) { try { localStorage.setItem(SOUND_KEY, on ? '1' : '0'); } catch (e) { } return !!on; }
+
+  function synthDing() {                      // 兜底：自己合成一声"叮"（站内音取不到时）
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return false;
+      const ctx = new Ctx();
+      const t0 = ctx.currentTime;
+      [1318.5, 1975.5].forEach(function (f, i) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0, t0 + i * 0.06);
+        g.gain.linearRampToValueAtTime(i ? 0.09 : 0.14, t0 + i * 0.06 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.06 + 0.45);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t0 + i * 0.06); o.stop(t0 + i * 0.06 + 0.5);
+      });
+      setTimeout(function () { try { ctx.close(); } catch (e) { } }, 900);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* 弹的时候叮一声：优先用站内自己的系统提示音，取不到再合成 */
+  function ding() {
+    if (!soundOn()) return 'muted';
+    try {
+      if (typeof Utils !== 'undefined' && Utils.Resource && typeof Utils.Resource.notiSound === 'function') {
+        Utils.Resource.notiSound(SITE_SOUND);
+        return 'site';
+      }
+    } catch (e) { warn('站内提示音失败', e); }
+    return synthDing() ? 'synth' : 'none';
+  }
+
+  /* 拿一个房名去弹（拼文本 → 调站点自己的提示通道 → 叮一声） */
+  function popRaw(raw) {
     const text = destroyTipText(raw, (typeof Mod !== 'undefined' && Mod.template) ? Mod.template : null);
     let ok = false, err = '';
     try {
       if (typeof Utils === 'undefined' || !Utils.sync) err = 'Utils.sync 不可用（站点结构变了？）';
       else { Utils.sync(0, text); ok = true; }
     } catch (e) { err = String(e && e.message ? e.message : e); }
-    return { raw: raw, text: text, ok: ok, err: err };
+    const sound = ok ? ding() : 'none';
+    return { raw: raw, text: text, ok: ok, err: err, sound: sound };
   }
 
-  /* 手动指定房名（控制台小玩具） */
-  function popTip(name) {
-    const text = destroyTipText(String(name == null ? '' : name), (typeof Mod !== 'undefined' && Mod.template) ? Mod.template : null);
-    let ok = false, err = '';
-    try {
-      if (typeof Utils === 'undefined' || !Utils.sync) err = 'Utils.sync 不可用';
-      else { Utils.sync(0, text); ok = true; }
-    } catch (e) { err = String(e && e.message ? e.message : e); }
-    return { raw: String(name == null ? '' : name), text: text, ok: ok, err: err };
+  /* 弹当前房 */
+  function destroyRoomTip() { return popRaw(destroyTipRawName(currentDeps())); }
+
+  /* 弹指定房间：房号、带前缀的名字、裸名字都收；空 = 当前房 */
+  function popTip(input) {
+    const want = String(input == null ? '' : input).trim();
+    if (!want) return destroyRoomTip();
+    return popRaw(resolveRoomName(want, currentDeps()));
   }
 
   /* ========================== 界面 ========================== */
-  let fab = null, toast = null, toastTimer = null, drag = null;
+  let fab = null, toast = null, toastTimer = null, drag = null, box = null, input = null, hint = null;
 
   function readPos() {
     try {
@@ -154,18 +230,60 @@
     toast.style.cssText = 'position:fixed;z-index:2147483001;display:none;padding:6px 9px;background:rgba(20,20,24,.94);'
       + 'border:1px solid #3a3b44;border-radius:6px;font:12px/1.5 system-ui,"Microsoft YaHei",sans-serif;color:#ddd;'
       + 'max-width:260px;word-break:break-all;';
+
+    /* 输入框：右键 / 长按悬浮球打开，填房号或房名 */
+    box = document.createElement('div');
+    box.id = BOX_ID;
+    box.setAttribute('data-roomdestroy', '1');
+    box.style.cssText = 'position:fixed;z-index:2147483002;display:none;width:288px;padding:9px;background:rgba(20,20,24,.97);'
+      + 'border:1px solid #3a3b44;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);'
+      + 'font:12px/1.5 system-ui,"Microsoft YaHei",sans-serif;color:#ddd;';
+    input = document.createElement('input');
+    input.setAttribute('data-roomdestroy', '1');
+    input.placeholder = '房号，或房名（浅醉 / 住宅_浅醉）';
+    input.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 8px;background:#101014;border:1px solid #444;'
+      + 'border-radius:6px;color:#eee;font:12px/1.5 system-ui,"Microsoft YaHei",sans-serif;outline:none;';
+    hint = document.createElement('div');
+    hint.style.cssText = 'padding:6px 2px 7px;color:#8b8b93;font-size:11px;word-break:break-all;';
+    const boxRow = document.createElement('div');
+    boxRow.style.cssText = 'display:flex;gap:6px;';
+    const okBtn = document.createElement('button');
+    okBtn.textContent = '弹';
+    okBtn.style.cssText = 'flex:1;padding:6px;background:#3a1f1f;color:#ff9d9d;border:1px solid #5a2a2a;border-radius:6px;cursor:pointer;font-weight:700;';
+    const noBtn = document.createElement('button');
+    noBtn.textContent = '取消';
+    noBtn.style.cssText = 'flex:1;padding:6px;background:#2a2b33;color:#c9c9d0;border:1px solid #3a3b44;border-radius:6px;cursor:pointer;';
+    boxRow.appendChild(okBtn); boxRow.appendChild(noBtn);
+    box.appendChild(input); box.appendChild(hint); box.appendChild(boxRow);
+
     document.body.appendChild(fab);
     document.body.appendChild(toast);
+    document.body.appendChild(box);
+
+    input.addEventListener('input', updateHint);
+    input.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); submitInput(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeInput(); }
+    });
+    input.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    box.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    okBtn.addEventListener('click', function (e) { e.stopPropagation(); submitInput(); });
+    noBtn.addEventListener('click', function (e) { e.stopPropagation(); closeInput(); });
+    document.addEventListener('pointerdown', onDocDown, true);
 
     const p = readPos();
     applyPos(p.defaulted ? defaultPos() : p);
-    showToast('已就位：点我 = 销毁当前房间', '#9ad0a0');
+    showToast('已就位：点我 = 销毁当前房间 · 右键/长按 = 指定房号', '#9ad0a0');
 
     /* 拖动 + 点击（站点会吞掉默认点击，所以在 pointerup 里判定） */
     fab.addEventListener('pointerdown', function (e) {
       e.stopPropagation();
-      drag = { x: e.clientX, y: e.clientY, l: parseFloat(fab.style.left) || 0, t: parseFloat(fab.style.top) || 0, moved: 0 };
+      drag = { x: e.clientX, y: e.clientY, l: parseFloat(fab.style.left) || 0, t: parseFloat(fab.style.top) || 0, moved: 0, held: 0 };
       try { fab.setPointerCapture(e.pointerId); } catch (_) { }
+      drag.holdTimer = setTimeout(function () {          // 长按 550ms = 打开输入框（手机上也能用）
+        if (drag && drag.moved < 4) { drag.held = 1; openInput(); }
+      }, 550);
     });
     fab.addEventListener('pointermove', function (e) {
       if (!drag) return;
@@ -177,7 +295,10 @@
     fab.addEventListener('pointerup', function (e) {
       if (!drag) return;
       e.stopPropagation();
-      const moved = drag.moved; drag = null;
+      const moved = drag.moved, held = drag.held;
+      if (drag.holdTimer) clearTimeout(drag.holdTimer);
+      drag = null;
+      if (held) return;                                  // 长按已经开了输入框，别再弹一次
       if (moved < 4) fire();
       else { const p = { left: parseFloat(fab.style.left) || 0, top: parseFloat(fab.style.top) || 0 }; writePos(p); showToast('摆位已记住', '#9ad0a0'); }
       if (toast) {
@@ -186,16 +307,54 @@
         toast.style.top = Math.max(4, p.top - 34) + 'px';
       }
     });
-    fab.addEventListener('pointercancel', function () { drag = null; });
+    fab.addEventListener('pointercancel', function () { if (drag && drag.holdTimer) clearTimeout(drag.holdTimer); drag = null; });
+    fab.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); openInput(); });
     fab.addEventListener('click', function (e) { e.stopPropagation(); });   // 真正的动作在 pointerup
     window.addEventListener('resize', keepInView);
     return true;
   }
 
+  function onDocDown(e) {
+    if (!box || box.style.display === 'none') return;
+    const t = e.target;
+    if (t && (t === box || (t.closest && t.closest('#' + FAB_ID)) || (box.contains && box.contains(t)))) return;
+    closeInput();
+  }
+
+  function openInput() {
+    if (!box || !fab) return;
+    const p = { left: parseFloat(fab.style.left) || 0, top: parseFloat(fab.style.top) || 0 };
+    box.style.display = 'block';
+    box.style.left = Math.min(Math.max(4, p.left - 150), Math.max(4, window.innerWidth - 296)) + 'px';
+    box.style.top = Math.max(4, p.top - 104) + 'px';
+    if (input) { input.value = ''; try { input.focus(); } catch (e) { } }
+    updateHint();
+  }
+
+  function closeInput() { if (box) box.style.display = 'none'; }
+
+  function updateHint() {
+    if (!hint) return;
+    const v = input ? input.value.trim() : '';
+    if (!v) { hint.textContent = '空 = 当前房：' + (destroyTipRawName(currentDeps()) || '(取不到)'); return; }
+    hint.textContent = '将弹：' + (resolveRoomName(v, currentDeps()) || '(空)');
+  }
+
+  function submitInput() {
+    const v = input ? input.value : '';
+    const r = popTip(v);
+    if (r.ok) log('弹提示（输入）', JSON.stringify(r.raw) + ' → 提示音=' + r.sound);
+    else showToast('失败：' + r.err, '#d98a86');
+    closeInput();
+    return r;
+  }
+
   function destroy() {
     try { if (fab && fab.parentNode) fab.parentNode.removeChild(fab); } catch (e) { }
     try { if (toast && toast.parentNode) toast.parentNode.removeChild(toast); } catch (e) { }
-    fab = null; toast = null; drag = null;
+    try { if (box && box.parentNode) box.parentNode.removeChild(box); } catch (e) { }
+    try { document.removeEventListener('pointerdown', onDocDown, true); } catch (e) { }
+    fab = null; toast = null; box = null; input = null; hint = null; drag = null;
     try { window.removeEventListener('resize', keepInView); } catch (e) { }
   }
 
@@ -221,18 +380,20 @@
     mount: boot,
     unmount: function () { destroy(); if (watchdog) { clearInterval(watchdog); watchdog = null; } },
     destroyRoomTip: destroyRoomTip,     // 弹当前房
-    popTip: popTip,                     // 指定房名
+    popTip: popTip,                     // 弹指定房：房号 / 房名都行，空 = 当前房
+    openInput: openInput,               // 打开输入框（等同右键/长按悬浮球）
+    setSound: setSound,                 // setSound(false) 关掉提示音
+    soundOn: soundOn,
     _diag: {
       destroyTipRawName: destroyTipRawName,
       destroyTipText: destroyTipText,
       clampPos: clampPos,
-      currentRoomName: function () {
-        return destroyTipRawName({
-          cookieFn: (typeof Cookie === 'function') ? Cookie : null,
-          roomNames: (G.Objs && G.Objs.mapHolder && G.Objs.mapHolder.Assets) ? G.Objs.mapHolder.Assets.roomNameJson : null,
-          roomn: (typeof roomn !== 'undefined') ? roomn : '',
-        });
-      },
+      looksLikeRid: looksLikeRid,
+      resolveRoomName: resolveRoomName,
+      soundOnPref: soundOnPref,
+      currentRoomName: function () { return destroyTipRawName(currentDeps()); },
+      currentDeps: currentDeps,
+      ding: ding,
     },
   };
 })();

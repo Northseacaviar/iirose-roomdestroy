@@ -20,6 +20,8 @@ function dump() { document.getElementById('out').textContent = lines.join('\n') 
 /* ---------------- 站点环境桩 ---------------- */
 var syncCalls = [];
 window.Utils = { sync: function (a, b) { syncCalls.push([a, b]); } };
+var sounds = [];
+window.Utils.Resource = { notiSound: function (n) { sounds.push(n); } };   // 站内系统提示音
 window.Mod = { template: function (i, x) { return i === 29 ? '[' + x + ']' : '?'; } };
 var ROOMNAME = '\u793e\u533a_\u7a7a\u95f4\u7ad9';       // 社区_空间站
 window.Cookie = function (k, v) { if (arguments.length > 1) { ROOMNAME = String(v); return v; } return k === 'roomname' ? ROOMNAME : ''; };
@@ -84,12 +86,60 @@ function start() {
     ok('退化成房号', r2.raw === 'R1', r2.raw);
     ok('照样弹（不是静默失败）', r2.ok === true && syncCalls.length === 1, JSON.stringify(r2));
 
-    lines.push('\n[6] 手动指定房名 + 卸载');
+    lines.push('\n[6] 提示音：借站内自己的系统音');
+    window.Objs.mapHolder.Assets.roomNameJson = { R1: '\u4f4f\u5b85_\u6d45\u9189', '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9' };
+    ROOMNAME = '\u793e\u533a_\u7a7a\u95f4\u7ad9';
+    try { localStorage.removeItem('iirose_roomdestroy_sound'); } catch (e) { }
+    sounds.length = 0;
+    var r4 = A.destroyRoomTip();
+    ok('弹的时候调了站内系统提示音 notiSound("system")', sounds.length === 1 && sounds[0] === 'system', JSON.stringify(sounds));
+    ok('返回值标了音源 = site', r4.sound === 'site', r4.sound);
+    A.setSound(false);
+    sounds.length = 0;
+    var r5 = A.destroyRoomTip();
+    ok('关掉后不出声', sounds.length === 0 && r5.sound === 'muted', JSON.stringify(sounds) + ' / ' + r5.sound);
+    ok('关掉后照样弹提示', r5.ok === true, JSON.stringify(r5.ok));
+    A.setSound(true);
+    ok('能再打开', A.soundOn() === true && A.soundOn() === true);
+
+    lines.push('\n[7] 输入房号 / 房名弹（右键或长按悬浮球打开）');
+    var box = document.getElementById('iirose-roomdestroy-box');
+    ok('输入框在页面上', !!box);
+    ok('默认收起', !!box && box.style.display === 'none', box && box.style.display);
+    fab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    ok('右键打开输入框', box.style.display === 'block', box.style.display);
+    var inp = box.querySelector('input');
+    var hint = box.querySelector('div');
+    inp.value = '5b7ab839ace99';
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    ok('提示行显示解析结果（房号 → 类型_房名）', hint.textContent.indexOf('\u793e\u533a_\u7a7a\u95f4\u7ad9') >= 0, hint.textContent);
+    syncCalls.length = 0;
+    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    ok('回车 → 用房号解析出的房名弹', syncCalls.length === 1 && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1', String(syncCalls[0] && syncCalls[0][1]));
+    ok('弹完自动收起', box.style.display === 'none', box.style.display);
+
+    A.openInput();
+    var inp2 = box.querySelector('input');
+    inp2.value = '\u6d45\u9189';
+    inp2.dispatchEvent(new Event('input', { bubbles: true }));
+    syncCalls.length = 0;
+    box.querySelectorAll('button')[0].click();
+    ok('裸房名 → 自动补类型前缀再弹', syncCalls.length === 1 && syncCalls[0][1] === '[\u4f4f\u5b85_\u6d45\u9189]   \u5df2\u88ab\u9500\u6bc1', String(syncCalls[0] && syncCalls[0][1]));
+
+    A.openInput();
+    box.querySelectorAll('button')[1].click();
+    ok('取消 → 收起且不弹', box.style.display === 'none' && syncCalls.length === 1, box.style.display + ' / ' + syncCalls.length);
+    A.openInput();
+    inp2.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    ok('Esc → 收起', box.style.display === 'none', box.style.display);
+
+    lines.push('\n[8] 手动指定 + 卸载');
     syncCalls.length = 0;
     var r3 = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
     ok('指定房名生效', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1', r3.text);
     A.unmount();
     ok('卸载后悬浮球消失', !document.getElementById('iirose-roomdestroy-fab'));
+    ok('卸载后输入框也消失', !document.getElementById('iirose-roomdestroy-box'));
     setTimeout(function () { ok('卸载后不会再被补回来', !document.getElementById('iirose-roomdestroy-fab')); dump(); }, 2400);
   } catch (e) {
     ok('测试自身没抛错', false, e && e.message);
