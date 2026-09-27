@@ -28,8 +28,8 @@ window.Utils.Resource = { notiSound: function (n) { sounds.push(n); } };   // �
 window.Mod = { template: function (i, x) { return i === 29 ? '[' + x + ']' : '?'; } };
 var ROOMNAME = '\u793e\u533a_\u7a7a\u95f4\u7ad9';       // 社区_空间站
 window.Cookie = function (k, v) { if (arguments.length > 1) { ROOMNAME = String(v); return v; } return k === 'roomname' ? ROOMNAME : ''; };
-window.roomn = 'R1';
-window.Objs = { mapHolder: { Assets: { roomNameJson: { R1: '\u4f4f\u5b85_\u6d45\u9189' } } } };   // 住宅_浅醉
+window.roomn = '5b7ab839ace43';                       // 站点房号形态：13 位十六进制
+window.Objs = { mapHolder: { Assets: { roomNameJson: { '5b7ab839ace43': '\u793e\u533a_\u7a7a\u95f4\u7ad9' } } } };   // 社区_空间站
 
 /* ---------------- 加载插件 ---------------- */
 var s = document.createElement('script');
@@ -88,14 +88,19 @@ function start() {
     ROOMNAME = ''; window.Objs.mapHolder.Assets.roomNameJson = {};
     syncCalls.length = 0;
     var r2 = A.destroyRoomTip();
-    ok('退化成房号', r2.raw === 'R1', r2.raw);
+    ok('退化成房号（形态合法）', r2.raw === '5b7ab839ace43', r2.raw);
     ok('照样弹（不是静默失败）', r2.ok === true && syncCalls.length === 1, JSON.stringify(r2).slice(0, 120));
+    var rChainA = A._diag.destroyTipRawName({ cookieFn: function () { return '\u60a8\u5df2\u88ab\u5c01\u7981'; }, roomNames: {}, roomn: '5b7ab839ace43' });
+    ok('表空时 cookie 塞假通知 → 被跳过，退化成房号（链 A 堵住）', rChainA === '5b7ab839ace43', JSON.stringify(rChainA));
+    ok('表空 + 房号也非法 → 空串（宁可不弹）',
+      A._diag.destroyTipRawName({ cookieFn: function () { return '\u60a8\u5df2\u88ab\u5c01\u7981'; }, roomNames: {}, roomn: 'R1' }) === '');
 
     lines.push('\n[6] 提示音：借站内自己的系统音');
     window.Objs.mapHolder.Assets.roomNameJson = {
-      R1: '\u4f4f\u5b85_\u6d45\u9189',
+      '5b7ab839ace43': '\u793e\u533a_\u7a7a\u95f4\u7ad9',
+      '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9',
       R9: '\u4f4f\u5b85_Ruby\u5bb6',
-      '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9'
+      R1: '\u4f4f\u5b85_\u6d45\u9189'
     };
     ROOMNAME = '\u793e\u533a_\u7a7a\u95f4\u7ad9';
     try { localStorage.removeItem('iirose_roomdestroy_sound'); } catch (e) { }
@@ -180,14 +185,15 @@ function start() {
     function rejectGroup() {
       lines.push('\n[10] 拒绝任意文本（本次改造的根因）');
       window.Objs.mapHolder.Assets.roomNameJson = {
-        R1: '\u4f4f\u5b85_\u6d45\u9189',
+        '5b7ab839ace43': '\u793e\u533a_\u7a7a\u95f4\u7ad9',
+        '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9',
         R9: '\u4f4f\u5b85_Ruby\u5bb6',
-        '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9'
+        R1: '\u4f4f\u5b85_\u6d45\u9189'
       };
       syncCalls.length = 0;
       var rBad = A.popTip('\u60a8\u5df2\u88ab\u5c01\u7981\n\u89e3\u5c01\u5012\u8ba1\u65f6\uff1a8848 \u5929\n\u5907\u6ce8\uff1ax');
       ok('假通知文案 → 一次都不弹', syncCalls.length === 0, 'sync ' + syncCalls.length + ' 次');
-      ok('返回 ok=false + 说得清原因', rBad.ok === false && /\u6ca1\u8fd9\u4e2a\u623f\u95f4/.test(rBad.err), JSON.stringify(rBad).slice(0, 140));
+      ok('返回 ok=false + 说得清原因', rBad.ok === false && /\u6ca1\u67e5\u5230/.test(rBad.err), JSON.stringify(rBad).slice(0, 140));
 
       syncCalls.length = 0;
       A.popTip('<img src=x onerror=alert(1)>');
@@ -204,7 +210,7 @@ function start() {
       A.openInput();
       inp2.value = '\u60a8\u5df2\u88ab\u5c01\u7981';
       inp2.dispatchEvent(new Event('input', { bubbles: true }));
-      ok('输入框小字当场说"没这个房间"', hint.textContent.indexOf('\u6ca1\u8fd9\u4e2a\u623f\u95f4') >= 0, hint.textContent);
+      ok('输入框小字当场说"没查到"', hint.textContent.indexOf('\u6ca1\u67e5\u5230') >= 0, hint.textContent);
       box.querySelectorAll('button')[1].click();
       finalUnmount();
     }

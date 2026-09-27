@@ -5,7 +5,7 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src', 'iirose-roomdestroy.js');
-const EXPORTS = ['DESTROY_TIP_TEXT', 'NOTICE_TAG', 'escapeHtml', 'destroyTipRawName', 'destroyTipText',
+const EXPORTS = ['DESTROY_TIP_TEXT', 'NOTICE_TAG', 'escapeHtml', 'destroyTipRawName', 'destroyTipText', 'matchRoomName', 'pickRoomName',
   'clampPos', 'FAB_SIZE', 'looksLikeRid', 'resolveRoomName', 'soundOnPref', 'BOX_ID'];
 
 function loadCore() {
@@ -63,12 +63,16 @@ ok('不二次转义（& 只变一次）', L.escapeHtml('&lt;') === '&amp;lt;', L
 ok('null / undefined / 数字不炸', L.escapeHtml(null) === '' && L.escapeHtml(undefined) === '' && L.escapeHtml(7) === '7');
 
 console.log('\n[2] 房名：类型_房名 的取值优先级');
-ok('cookie("roomname") 优先',
-  L.destroyTipRawName({ cookieFn: (k) => (k === 'roomname' ? '社区_空间站' : ''), roomNames: { R: '住宅_别的' }, roomn: 'R' }) === '社区_空间站');
+ok('cookie("roomname") 优先（该值在房间表里）',
+  L.destroyTipRawName({ cookieFn: (k) => (k === 'roomname' ? '社区_空间站' : ''), roomNames: { R: '社区_空间站' }, roomn: 'R' }) === '社区_空间站');
+ok('cookie 值不在房间表里 → 不认它（挡带外写入）',
+  L.destroyTipRawName({ cookieFn: () => '您已被封禁', roomNames: { R: '住宅_别的' }, roomn: 'R' }) === '住宅_别的');
 ok('cookie 空 → 用 roomNameJson[当前房]',
   L.destroyTipRawName({ cookieFn: () => '', roomNames: { R: '住宅_别的' }, roomn: 'R' }) === '住宅_别的');
-ok('两者都没有 → 退房号',
-  L.destroyTipRawName({ cookieFn: () => '', roomNames: {}, roomn: 'R' }) === 'R');
+ok('两者都没有 + 房号形态合法 → 退房号',
+  L.destroyTipRawName({ cookieFn: () => '', roomNames: {}, roomn: '5b7ab839ace43' }) === '5b7ab839ace43');
+ok('房号形态非法 → 空串（宁可不弹）',
+  L.destroyTipRawName({ cookieFn: () => '', roomNames: {}, roomn: 'R' }) === '');
 ok('当前房也不知道 → 空字符串（不抛）',
   L.destroyTipRawName({ cookieFn: () => '', roomNames: {}, roomn: '' }) === '');
 ok('cookie 抛错不会炸',
@@ -118,6 +122,35 @@ ok('名字带下划线但表里不存在 → 拒', L.resolveRoomName('社区_冒
 ok('真房名没被误伤', L.resolveRoomName('浅醉', { roomNames: TBL }) === '住宅_浅醉'
   && L.resolveRoomName('社区_空间站', { roomNames: TBL }) === '社区_空间站'
   && L.resolveRoomName('旅馆_老地方', { roomNames: TBL }) === '旅馆_老地方');
+
+console.log('\n[6] 复查回归：多段房名 / 大小写 / 歧义 / $ 语义 / cookie 校验 / 接线');
+const CUR = '5b7ab839ace43';
+const TBL3 = { A1: '社区_空间站_客房', A2: '住宅_浅醉' };
+ok('多段房名按后缀段认', L.resolveRoomName('空间站_客房', { roomNames: TBL3 }) === '社区_空间站_客房',
+  L.resolveRoomName('空间站_客房', { roomNames: TBL3 }));
+ok('多段房名写全名也认', L.resolveRoomName('社区_空间站_客房', { roomNames: TBL3 }) === '社区_空间站_客房');
+ok('大写房号也查得到',
+  L.resolveRoomName('5B7AB839ACE43', { roomNames: { '5b7ab839ace43': '住宅_X' } }) === '住宅_X',
+  L.resolveRoomName('5B7AB839ACE43', { roomNames: { '5b7ab839ace43': '住宅_X' } }));
+ok('同名不同前缀 → 歧义拒绝', L.resolveRoomName('浅醉', { roomNames: { A: '住宅_浅醉', B: '旅馆_浅醉' } }) === '');
+ok('matchRoomName 直调：空表/空串不炸',
+  L.matchRoomName('浅醉', null) === '' && L.matchRoomName('', { A: '住宅_浅醉' }) === '');
+ok('房名含 $& ：$ 原样保留（& 被转义是预期的）',
+  L.destroyTipText('A$&B', tpl).indexOf('A$&amp;B') >= 0, L.destroyTipText('A$&B', tpl));
+ok('房名含 $& ：旧 bug 特征串（A*amp;B）不再出现',
+  L.destroyTipText('A$&B', tpl).indexOf('A*amp;B') < 0, L.destroyTipText('A$&B', tpl));
+ok('房名含 $$ 不被折叠成单个 $',
+  L.destroyTipText('A$$B', tpl).indexOf('A$$B') >= 0, L.destroyTipText('A$$B', tpl));
+ok('表空 + 表里 cookie 塞假通知 → 空串（链 A 堵住）',
+  L.destroyTipRawName({ cookieFn: () => '您已被封禁', roomNames: {}, roomn: 'R1' }) === '');
+ok('pickRoomName：空输入 → 走当前房',
+  (function () { const p = L.pickRoomName('', { cookieFn: () => '住宅_甲', roomNames: { [CUR]: '住宅_甲' }, roomn: CUR }); return p.ok === true && p.name === '住宅_甲'; })());
+ok('pickRoomName：查不到 → ok=false + 说明原因',
+  (function () { const p = L.pickRoomName('您已被封禁', { roomNames: TBL }); return p.ok === false && p.name === '' && p.err.indexOf('没查到') >= 0; })());
+ok('pickRoomName：真房名 → ok=true',
+  (function () { const p = L.pickRoomName('浅醉', { roomNames: TBL }); return p.ok === true && p.name === '住宅_浅醉'; })());
+ok('pickRoomName：当前房取不到 → 拒绝（不弹空房名）',
+  (function () { const p = L.pickRoomName('', { cookieFn: () => '', roomNames: {}, roomn: 'R1' }); return p.ok === false; })());
 
 console.log('\n[5] 提示音偏好');
 ok('默认开', L.soundOnPref(null) === true && L.soundOnPref('') === true && L.soundOnPref('1') === true);

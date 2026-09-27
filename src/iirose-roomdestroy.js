@@ -16,7 +16,7 @@
   try { window.__IIROSE_ROOMDESTROY_VERSION__ = VERSION; } catch (e) { }
 
   // #region CORE
-  const DESTROY_TIP_TEXT = '*   已被销毁';      // 站点原句，'*' 处换成房名（含 HTML，站点自己会渲染）
+  const DESTROY_TIP_TEXT = '*   已被销毁';      // 站点原句，'*' 处换成房名（房名先转义，见 destroyTipText）
   const NOTICE_TAG = '\n[趣味插件 · 非官方通知]';   // 固定角标，不可配置
   const FAB_ID = 'iirose-roomdestroy-fab';
   const BOX_ID = 'iirose-roomdestroy-box';
@@ -30,7 +30,8 @@
     });
   }
 
-  /* 取"类型_房名"：Cookie("roomname") → 站内房间表 roomNameJson[当前房] → 房号兜底 */
+  /* 取"类型_房名"：Cookie("roomname") → 站内房间表 roomNameJson[当前房] → 房号兜底
+   * 三条来源都要求站得住：Cookie 值要在房间表里（挡带外写入），房号要是合法形态 */
   function destroyTipRawName(deps) {
     deps = deps || {};
     const names = deps.roomNames || null;
@@ -39,8 +40,9 @@
     if (typeof deps.cookieFn === 'function') {
       try { v = String(deps.cookieFn('roomname') || ''); } catch (e) { v = ''; }
     }
+    if (v && !matchRoomName(v, names)) v = '';
     if (!v && names && rn && names[rn]) v = String(names[rn]);
-    if (!v && rn) v = rn;
+    if (!v && rn && looksLikeRid(rn)) v = rn;
     return v;
   }
 
@@ -52,7 +54,7 @@
       try { name = String(tplFn(29, safe)); } catch (e) { name = ''; }
     }
     if (!name) name = '「' + safe + '」';
-    return DESTROY_TIP_TEXT.replace('*', name) + NOTICE_TAG;
+    return DESTROY_TIP_TEXT.replace('*', function () { return name; }) + NOTICE_TAG;
   }
 
   /* 悬浮球摆位夹取：别让它跑出可视区（窄屏/横竖屏切换都算） */
@@ -74,22 +76,50 @@
    *   裸名字 → 表里按 "_" 后半段匹配，命中就补前缀（浅醉 → 住宅_浅醉）
    *   查不到 → 返回空串，由调用方拒绝
    */
+  /* 房间表里认不认这个名字：全名相等，或以 "_" + 输入 结尾（多段房名也算），大小写不敏感。
+   * 命中多个不同房间 = 歧义，返回空串 */
+  function matchRoomName(raw, names) {
+    const key = String(raw == null ? '' : raw).trim().toLowerCase();
+    if (!key || !names) return '';
+    const tail = '_' + key;
+    let hit = '';
+    for (const id in names) {
+      if (!Object.prototype.hasOwnProperty.call(names, id)) continue;
+      const full = String(names[id] || '');
+      if (!full) continue;
+      const fl = full.toLowerCase();
+      if (fl !== key && !(fl.length > tail.length && fl.slice(-tail.length) === tail)) continue;
+      if (hit && hit !== full) return '';
+      hit = full;
+    }
+    return hit;
+  }
+
+  /* 用户输入 → 站内完整房名；查不到返回空串（由调用方拒绝） */
   function resolveRoomName(input, deps) {
     deps = deps || {};
     const names = deps.roomNames || null;
     const raw = String(input == null ? '' : input).trim();
     if (!raw) return '';
-    if (looksLikeRid(raw)) return (names && names[raw]) ? String(names[raw]) : '';
-    if (!names) return '';
-    const key = raw.toLowerCase();
-    for (const id in names) {
-      if (!Object.prototype.hasOwnProperty.call(names, id)) continue;
-      const full = String(names[id] || '');
-      const cut = full.lastIndexOf('_');
-      const tail = cut > 0 ? full.substr(cut + 1) : full;
-      if (full.toLowerCase() === key || tail.toLowerCase() === key) return full;
+    if (looksLikeRid(raw)) {
+      if (!names) return '';
+      const hit = names[raw] || names[raw.toLowerCase()];     // 房号大小写容错
+      return hit ? String(hit) : '';
     }
-    return '';
+    return matchRoomName(raw, names);
+  }
+
+  /* 按输入定夺弹谁：{ ok, name, err }，纯逻辑、不碰站点（接线可被单测覆盖） */
+  function pickRoomName(input, deps) {
+    const want = String(input == null ? '' : input).trim();
+    if (want) {
+      const name = resolveRoomName(want, deps || {});
+      if (!name) return { ok: false, name: '', err: '站内房间表里没查到：' + want };
+      return { ok: true, name: name, err: '' };
+    }
+    const cur = destroyTipRawName(deps || {});
+    if (!cur) return { ok: false, name: '', err: '取不到当前房名（不在房间里？）' };
+    return { ok: true, name: cur, err: '' };
   }
   // #endregion
 
@@ -161,13 +191,11 @@
   /* 弹当前房 */
   function destroyRoomTip() { return popRaw(destroyTipRawName(currentDeps())); }
 
-  /* 弹指定房间：房号、带前缀的名字、裸名字都收；空 = 当前房 */
+  /* 弹指定房间：房号、带前缀的名字、裸名字都收；空 = 当前房。表里查不到就不弹 */
   function popTip(input) {
-    const want = String(input == null ? '' : input).trim();
-    if (!want) return destroyRoomTip();
-    const name = resolveRoomName(want, currentDeps());
-    if (!name) return { raw: '', text: '', ok: false, err: '没这个房间：' + want, sound: 'none' };
-    return popRaw(name);
+    const p = pickRoomName(input, currentDeps());
+    if (!p.ok) return { raw: '', text: '', ok: false, err: p.err, sound: 'none' };
+    return popRaw(p.name);
   }
 
   /* ========================== 界面 ========================== */
@@ -364,7 +392,7 @@
     const v = input ? input.value.trim() : '';
     if (!v) { hint.textContent = '空 = 当前房：' + (destroyTipRawName(currentDeps()) || '(取不到)'); return; }
     const name = resolveRoomName(v, currentDeps());
-    hint.textContent = name ? ('将弹：' + name) : ('没这个房间：' + v);
+    hint.textContent = name ? ('将弹：' + name) : ('站内房间表里没查到：' + v);
   }
 
   function submitInput() {
@@ -419,6 +447,8 @@
       resolveRoomName: resolveRoomName,
       escapeHtml: escapeHtml,
       NOTICE_TAG: NOTICE_TAG,
+      matchRoomName: matchRoomName,
+      pickRoomName: pickRoomName,
       soundOnPref: soundOnPref,
       currentRoomName: function () { return destroyTipRawName(currentDeps()); },
       currentDeps: currentDeps,
