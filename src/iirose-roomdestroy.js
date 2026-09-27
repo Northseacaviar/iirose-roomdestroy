@@ -10,14 +10,13 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.4.0';
-  const VERSION_CODE = 4;          // 官方规范：数字版本号，每次发布递增 1
+  const VERSION = '0.5.0';
+  const VERSION_CODE = 5;          // 官方规范：数字版本号，每次发布递增 1
   const TAG = '[房间销毁器]';
   try { window.__IIROSE_ROOMDESTROY_VERSION__ = VERSION; } catch (e) { }
 
   // #region CORE
   const DESTROY_TIP_TEXT = '*   已被销毁';      // 站点原句，'*' 处换成房名（房名先转义，见 destroyTipText）
-  const NOTICE_TAG = '\n[趣味插件 · 非官方通知]';   // 固定角标，不可配置
   const FAB_ID = 'iirose-roomdestroy-fab';
   const BOX_ID = 'iirose-roomdestroy-box';
   const POS_KEY = 'iirose_roomdestroy_pos';
@@ -54,7 +53,7 @@
       try { name = String(tplFn(29, safe)); } catch (e) { name = ''; }
     }
     if (!name) name = '「' + safe + '」';
-    return DESTROY_TIP_TEXT.replace('*', function () { return name; }) + NOTICE_TAG;
+    return DESTROY_TIP_TEXT.replace('*', function () { return name; });
   }
 
   /* 悬浮球摆位夹取：别让它跑出可视区（窄屏/横竖屏切换都算） */
@@ -446,7 +445,6 @@
       looksLikeRid: looksLikeRid,
       resolveRoomName: resolveRoomName,
       escapeHtml: escapeHtml,
-      NOTICE_TAG: NOTICE_TAG,
       matchRoomName: matchRoomName,
       pickRoomName: pickRoomName,
       soundOnPref: soundOnPref,

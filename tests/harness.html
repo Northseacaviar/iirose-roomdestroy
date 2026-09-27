@@ -17,8 +17,6 @@ function ok(name, cond, extra) {
 }
 function dump() { document.getElementById('out').textContent = lines.join('\n') + '\nSUMMARY ' + pass + '/' + (pass + fail); }
 
-/* 固定角标（与源码里 NOTICE_TAG 一致），断言只从这一处引用 */
-var TAG = '\n[\u8da3\u5473\u63d2\u4ef6 \u00b7 \u975e\u5b98\u65b9\u901a\u77e5]';
 
 /* ---------------- 站点环境桩 ---------------- */
 var syncCalls = [];
@@ -62,15 +60,15 @@ function start() {
     lines.push('\n[2] 点击 = 弹站内原生提示（当前房）');
     var r = A.destroyRoomTip();
     ok('返回值 ok=true', r.ok === true, JSON.stringify(r).slice(0, 120));
-    ok('文本 = 站内那一行 + 固定角标', r.text === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1' + TAG, r.text);
+    ok('文本 = 站内那一行', r.text === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1', r.text);
     ok('调用的是 Utils.sync(0, \u2026)', syncCalls.length === 1 && syncCalls[0][0] === 0, JSON.stringify(syncCalls).slice(0, 120));
 
     lines.push('\n[3] 点悬浮球本身（走 pointerup 判定）');
     syncCalls.length = 0;
     pd(fab, 100, 100); pu(fab, 100, 100);
     ok('轻点 → 弹了一次', syncCalls.length === 1, String(syncCalls.length));
-    ok('轻点用的还是当前房名 + 角标',
-      syncCalls[0] && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1' + TAG,
+    ok('轻点用的还是当前房名',
+      syncCalls[0] && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1',
       String(syncCalls[0] && syncCalls[0][1]));
 
     lines.push('\n[4] 拖动不误触');
@@ -129,8 +127,8 @@ function start() {
     ok('提示行显示解析结果（房号 → 类型_房名）', hint.textContent.indexOf('\u793e\u533a_\u7a7a\u95f4\u7ad9') >= 0, hint.textContent);
     syncCalls.length = 0;
     inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    ok('回车 → 用房号解析出的房名弹 + 角标',
-      syncCalls.length === 1 && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1' + TAG,
+    ok('回车 → 用房号解析出的房名弹',
+      syncCalls.length === 1 && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1',
       String(syncCalls[0] && syncCalls[0][1]));
     ok('弹完自动收起', box.style.display === 'none', box.style.display);
 
@@ -140,8 +138,8 @@ function start() {
     inp2.dispatchEvent(new Event('input', { bubbles: true }));
     syncCalls.length = 0;
     box.querySelectorAll('button')[0].click();
-    ok('裸房名 → 自动补类型前缀再弹 + 角标',
-      syncCalls.length === 1 && syncCalls[0][1] === '[\u4f4f\u5b85_\u6d45\u9189]   \u5df2\u88ab\u9500\u6bc1' + TAG,
+    ok('裸房名 → 自动补类型前缀再弹',
+      syncCalls.length === 1 && syncCalls[0][1] === '[\u4f4f\u5b85_\u6d45\u9189]   \u5df2\u88ab\u9500\u6bc1',
       String(syncCalls[0] && syncCalls[0][1]));
 
     A.openInput();
@@ -205,7 +203,6 @@ function start() {
       syncCalls.length = 0;
       var rGood = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
       ok('真房名照弹（没误伤）', rGood.ok === true && syncCalls.length === 1, JSON.stringify(rGood).slice(0, 140));
-      ok('弹出的文本带固定角标', syncCalls[0][1].indexOf('\u975e\u5b98\u65b9\u901a\u77e5') >= 0, String(syncCalls[0] && syncCalls[0][1]));
 
       A.openInput();
       inp2.value = '\u60a8\u5df2\u88ab\u5c01\u7981';
@@ -219,7 +216,7 @@ function start() {
       lines.push('\n[11] 手动指定 + 卸载');
       syncCalls.length = 0;
       var r3 = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
-      ok('指定房名生效 + 角标', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1' + TAG, r3.text);
+      ok('指定房名生效', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1', r3.text);
       A.unmount();
       ok('卸载后悬浮球消失', !document.getElementById('iirose-roomdestroy-fab'));
       ok('卸载后输入框也消失', !document.getElementById('iirose-roomdestroy-box'));

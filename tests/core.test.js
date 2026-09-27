@@ -5,7 +5,7 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src', 'iirose-roomdestroy.js');
-const EXPORTS = ['DESTROY_TIP_TEXT', 'NOTICE_TAG', 'escapeHtml', 'destroyTipRawName', 'destroyTipText', 'matchRoomName', 'pickRoomName',
+const EXPORTS = ['DESTROY_TIP_TEXT', 'escapeHtml', 'destroyTipRawName', 'destroyTipText', 'matchRoomName', 'pickRoomName',
   'clampPos', 'FAB_SIZE', 'looksLikeRid', 'resolveRoomName', 'soundOnPref', 'BOX_ID'];
 
 function loadCore() {
@@ -30,25 +30,15 @@ function ok(name, cond, extra) {
 const L = loadCore();
 const tpl = (i, x) => (i === 29 ? '<b>' + x + '</b>' : '?');
 
-console.log('\n[1] 文本：与站点那一行逐字一致 + 固定角标');
+console.log('\n[1] 文本：与站点那一行逐字一致');
 ok('站内原句就是 "*   已被销毁"', L.DESTROY_TIP_TEXT === '*   已被销毁', JSON.stringify(L.DESTROY_TIP_TEXT));
-ok('带模板时 == 站点那一行的结果 + 角标',
-  L.destroyTipText('社区_空间站', tpl) === '<b>社区_空间站</b>   已被销毁' + L.NOTICE_TAG, L.destroyTipText('社区_空间站', tpl));
+ok('带模板时 == 站点那一行的结果',
+  L.destroyTipText('社区_空间站', tpl) === '<b>社区_空间站</b>   已被销毁', L.destroyTipText('社区_空间站', tpl));
 ok('模板只按 29 号调用', (function () { let seen = null; L.destroyTipText('x', (i) => { seen = i; return ''; }); return seen === 29; })());
 ok('模板不可用（未装/被改）退化成「房名」',
-  L.destroyTipText('住宅_浅醉') === '「住宅_浅醉」   已被销毁' + L.NOTICE_TAG, L.destroyTipText('住宅_浅醉'));
+  L.destroyTipText('住宅_浅醉') === '「住宅_浅醉」   已被销毁', L.destroyTipText('住宅_浅醉'));
 ok('模板抛错不炸（调用方 try 之外还有兜底）', typeof L.destroyTipText('x', () => { throw new Error('boom'); }) === 'string');
-ok('空房名也给出可读文本', L.destroyTipText('') === '「」   已被销毁' + L.NOTICE_TAG, L.destroyTipText(''));
-
-console.log('\n[1b] 固定角标：写死的常量、永远在末尾');
-ok('角标是写死的常量', typeof L.NOTICE_TAG === 'string' && L.NOTICE_TAG.length > 0 && L.NOTICE_TAG.indexOf('非官方通知') >= 0,
-  JSON.stringify(L.NOTICE_TAG));
-ok('每条文本都以角标结尾', /非官方通知\]$/.test(L.destroyTipText('社区_空间站', tpl)));
-ok('角标排在"已被销毁"之后（模板改不掉它的位置）', (function () {
-  const t = L.destroyTipText('社区_空间站', tpl);
-  return t.indexOf('已被销毁') < t.indexOf('非官方通知');
-})());
-ok('模板抛错时角标照样在', /非官方通知\]$/.test(L.destroyTipText('x', () => { throw new Error('x'); })));
+ok('空房名也给出可读文本', L.destroyTipText('') === '「」   已被销毁', L.destroyTipText(''));
 
 console.log('\n[1c] HTML 转义：房名只当纯文本');
 ok('真房名逐字不变', L.destroyTipText('社区_空间站', tpl).indexOf('社区_空间站') >= 0);
