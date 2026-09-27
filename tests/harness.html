@@ -17,6 +17,9 @@ function ok(name, cond, extra) {
 }
 function dump() { document.getElementById('out').textContent = lines.join('\n') + '\nSUMMARY ' + pass + '/' + (pass + fail); }
 
+/* 固定角标（与源码里 NOTICE_TAG 一致），断言只从这一处引用 */
+var TAG = '\n[\u8da3\u5473\u63d2\u4ef6 \u00b7 \u975e\u5b98\u65b9\u901a\u77e5]';
+
 /* ---------------- 站点环境桩 ---------------- */
 var syncCalls = [];
 window.Utils = { sync: function (a, b) { syncCalls.push([a, b]); } };
@@ -58,15 +61,17 @@ function start() {
 
     lines.push('\n[2] 点击 = 弹站内原生提示（当前房）');
     var r = A.destroyRoomTip();
-    ok('返回值 ok=true', r.ok === true, JSON.stringify(r));
-    ok('文本 = 站内那一行的形状', r.text === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1', r.text);
-    ok('调用的是 Utils.sync(0, \u2026)', syncCalls.length === 1 && syncCalls[0][0] === 0, JSON.stringify(syncCalls));
+    ok('返回值 ok=true', r.ok === true, JSON.stringify(r).slice(0, 120));
+    ok('文本 = 站内那一行 + 固定角标', r.text === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1' + TAG, r.text);
+    ok('调用的是 Utils.sync(0, \u2026)', syncCalls.length === 1 && syncCalls[0][0] === 0, JSON.stringify(syncCalls).slice(0, 120));
 
     lines.push('\n[3] 点悬浮球本身（走 pointerup 判定）');
     syncCalls.length = 0;
     pd(fab, 100, 100); pu(fab, 100, 100);
     ok('轻点 → 弹了一次', syncCalls.length === 1, String(syncCalls.length));
-    ok('轻点用的还是当前房名', syncCalls[0] && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1', String(syncCalls[0] && syncCalls[0][1]));
+    ok('轻点用的还是当前房名 + 角标',
+      syncCalls[0] && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1' + TAG,
+      String(syncCalls[0] && syncCalls[0][1]));
 
     lines.push('\n[4] 拖动不误触');
     syncCalls.length = 0;
@@ -84,10 +89,14 @@ function start() {
     syncCalls.length = 0;
     var r2 = A.destroyRoomTip();
     ok('退化成房号', r2.raw === 'R1', r2.raw);
-    ok('照样弹（不是静默失败）', r2.ok === true && syncCalls.length === 1, JSON.stringify(r2));
+    ok('照样弹（不是静默失败）', r2.ok === true && syncCalls.length === 1, JSON.stringify(r2).slice(0, 120));
 
     lines.push('\n[6] 提示音：借站内自己的系统音');
-    window.Objs.mapHolder.Assets.roomNameJson = { R1: '\u4f4f\u5b85_\u6d45\u9189', '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9' };
+    window.Objs.mapHolder.Assets.roomNameJson = {
+      R1: '\u4f4f\u5b85_\u6d45\u9189',
+      R9: '\u4f4f\u5b85_Ruby\u5bb6',
+      '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9'
+    };
     ROOMNAME = '\u793e\u533a_\u7a7a\u95f4\u7ad9';
     try { localStorage.removeItem('iirose_roomdestroy_sound'); } catch (e) { }
     sounds.length = 0;
@@ -115,7 +124,9 @@ function start() {
     ok('提示行显示解析结果（房号 → 类型_房名）', hint.textContent.indexOf('\u793e\u533a_\u7a7a\u95f4\u7ad9') >= 0, hint.textContent);
     syncCalls.length = 0;
     inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    ok('回车 → 用房号解析出的房名弹', syncCalls.length === 1 && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1', String(syncCalls[0] && syncCalls[0][1]));
+    ok('回车 → 用房号解析出的房名弹 + 角标',
+      syncCalls.length === 1 && syncCalls[0][1] === '[\u793e\u533a_\u7a7a\u95f4\u7ad9]   \u5df2\u88ab\u9500\u6bc1' + TAG,
+      String(syncCalls[0] && syncCalls[0][1]));
     ok('弹完自动收起', box.style.display === 'none', box.style.display);
 
     A.openInput();
@@ -124,7 +135,9 @@ function start() {
     inp2.dispatchEvent(new Event('input', { bubbles: true }));
     syncCalls.length = 0;
     box.querySelectorAll('button')[0].click();
-    ok('裸房名 → 自动补类型前缀再弹', syncCalls.length === 1 && syncCalls[0][1] === '[\u4f4f\u5b85_\u6d45\u9189]   \u5df2\u88ab\u9500\u6bc1', String(syncCalls[0] && syncCalls[0][1]));
+    ok('裸房名 → 自动补类型前缀再弹 + 角标',
+      syncCalls.length === 1 && syncCalls[0][1] === '[\u4f4f\u5b85_\u6d45\u9189]   \u5df2\u88ab\u9500\u6bc1' + TAG,
+      String(syncCalls[0] && syncCalls[0][1]));
 
     A.openInput();
     box.querySelectorAll('button')[1].click();
@@ -160,14 +173,47 @@ function start() {
       ok('长按抬手不会重复弹', syncCalls.length === 1, 'sync ' + syncCalls.length + ' 次');
       fab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
       ok('触屏上的 contextmenu 不抢长按（不冒输入框）', box.style.display === 'none', box.style.display);
-      finalUnmount();
+      rejectGroup();
     }, 2300);
 
+    /* 改造根因：任意文本进不去，真房名照常 */
+    function rejectGroup() {
+      lines.push('\n[10] 拒绝任意文本（本次改造的根因）');
+      window.Objs.mapHolder.Assets.roomNameJson = {
+        R1: '\u4f4f\u5b85_\u6d45\u9189',
+        R9: '\u4f4f\u5b85_Ruby\u5bb6',
+        '5b7ab839ace99': '\u793e\u533a_\u7a7a\u95f4\u7ad9'
+      };
+      syncCalls.length = 0;
+      var rBad = A.popTip('\u60a8\u5df2\u88ab\u5c01\u7981\n\u89e3\u5c01\u5012\u8ba1\u65f6\uff1a8848 \u5929\n\u5907\u6ce8\uff1ax');
+      ok('假通知文案 → 一次都不弹', syncCalls.length === 0, 'sync ' + syncCalls.length + ' 次');
+      ok('返回 ok=false + 说得清原因', rBad.ok === false && /\u6ca1\u8fd9\u4e2a\u623f\u95f4/.test(rBad.err), JSON.stringify(rBad).slice(0, 140));
+
+      syncCalls.length = 0;
+      A.popTip('<img src=x onerror=alert(1)>');
+      ok('HTML 注入串 → 不弹', syncCalls.length === 0, 'sync ' + syncCalls.length + ' 次');
+
+      A.popTip('\u4f4f\u5b85_\u6d45\u9189\u4e0d\u5b58\u5728');
+      ok('名字带下划线但表里没有 → 不弹', syncCalls.length === 0, 'sync ' + syncCalls.length + ' 次');
+
+      syncCalls.length = 0;
+      var rGood = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
+      ok('真房名照弹（没误伤）', rGood.ok === true && syncCalls.length === 1, JSON.stringify(rGood).slice(0, 140));
+      ok('弹出的文本带固定角标', syncCalls[0][1].indexOf('\u975e\u5b98\u65b9\u901a\u77e5') >= 0, String(syncCalls[0] && syncCalls[0][1]));
+
+      A.openInput();
+      inp2.value = '\u60a8\u5df2\u88ab\u5c01\u7981';
+      inp2.dispatchEvent(new Event('input', { bubbles: true }));
+      ok('输入框小字当场说"没这个房间"', hint.textContent.indexOf('\u6ca1\u8fd9\u4e2a\u623f\u95f4') >= 0, hint.textContent);
+      box.querySelectorAll('button')[1].click();
+      finalUnmount();
+    }
+
     function finalUnmount() {
-      lines.push('\n[10] 手动指定 + 卸载');
+      lines.push('\n[11] 手动指定 + 卸载');
       syncCalls.length = 0;
       var r3 = A.popTip('\u4f4f\u5b85_Ruby\u5bb6');
-      ok('指定房名生效', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1', r3.text);
+      ok('指定房名生效 + 角标', r3.text === '[\u4f4f\u5b85_Ruby\u5bb6]   \u5df2\u88ab\u9500\u6bc1' + TAG, r3.text);
       A.unmount();
       ok('卸载后悬浮球消失', !document.getElementById('iirose-roomdestroy-fab'));
       ok('卸载后输入框也消失', !document.getElementById('iirose-roomdestroy-box'));
