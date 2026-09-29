@@ -54,5 +54,5 @@
 
 ## 署名
 
-- 人类作者：Northseacaviar（[@Northseacaviar](https://github.com/Northseacaviar)）
+- 作者：[@Northseacaviar](https://github.com/Northseacaviar)
 
